@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>LPU Campus Navigator — Multi-Color All Routes & iViewd 3D Campus View</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            canvas: '#090D16',
+            panel: 'rgba(15, 23, 36, 0.88)',
+            card: '#162032',
+            lime: '#A3E635',
+            cyan: '#00E5FF',
+            orange: '#FF6B2B',
+            magenta: '#D946EF',
+            amber: '#F59E0B',
+            forest: '#0D1F1A'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Space Grotesk', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Leaflet CSS & JS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <style>
+    /* Subtle Tactical Map Grid Pattern */
+    .bg-grid-pattern {
+      background-image: 
+        linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 36, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(163, 230, 53, 0.5);
+    }
+
+    /* Leaflet Dark/Tactical Styling Overrides */
+    .leaflet-container {
+      background: #090D16 !important;
+      font-family: 'Inter', sans-serif;
+    }
+    .leaflet-popup-content-wrapper {
+      background: #0F1724 !important;
+      color: #F8FAFC !important;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px !important;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7) !important;
+      padding: 2px;
+    }
+    .leaflet-popup-tip {
+      background: #0F1724 !important;
+    }
+    .leaflet-popup-content {
+      margin: 10px 12px !important;
+      line-height: 1.4;
+    }
+    
+    /* Dark Mode OSM Tile Filter */
+    .dark-osm-tiles {
+      filter: invert(100%) hue-rotate(180deg) brightness(92%) contrast(90%);
+    }
+
+    /* Pulse animations for markers */
+    @keyframes pulse-cyan {
+      0% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(0, 229, 255, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+    }
+    @keyframes pulse-orange {
+      0% { box-shadow: 0 0 0 0 rgba(255, 107, 43, 0.7); }
+      70% { box-shadow: 0 0 0 14px rgba(255, 107, 43, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 107, 43, 0); }
+    }
+    .marker-start-pulse {
+      animation: pulse-cyan 2s infinite;
+    }
+    .marker-dest-pulse {
+      animation: pulse-orange 2s infinite;
+    }
+
+    /* Route permanent label styling */
+    .route-pill-tooltip {
+      background: rgba(9, 13, 22, 0.92) !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.25) !important;
+      border-radius: 999px !important;
+      color: #ffffff !important;
+      font-family: 'Space Grotesk', sans-serif !important;
+      font-size: 11px !important;
+      font-weight: 700 !important;
+      padding: 2px 8px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.6) !important;
+    }
+    .route-pill-tooltip::before {
+      display: none !important;
+    }
+
+    /* Mobile-first viewport, sheet & touch styling */
+    html, body {
+      height: 100%;
+      height: 100dvh;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    @media (max-width: 1023px) {
+      #navPanel {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        z-index: 30;
+        border-top: 1px solid rgba(255, 255, 255, 0.15);
+        border-top-left-radius: 1.25rem;
+        border-top-right-radius: 1.25rem;
+        box-shadow: 0 -12px 35px rgba(0, 0, 0, 0.75);
+        transition: max-height 0.32s cubic-bezier(0.16, 1, 0.3, 1), height 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      #navPanel.sheet-peek {
+        max-height: 68px !important;
+        height: 68px !important;
+        overflow: hidden !important;
+      }
+      #navPanel.sheet-half {
+        max-height: 48vh !important;
+        height: 48vh !important;
+      }
+      #navPanel.sheet-full {
+        max-height: 86vh !important;
+        height: 86vh !important;
+      }
+
+      /* Map Pane fills entire workspace behind sheet on mobile */
+      #mapPane {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+      }
+    }
+
+    /* Smooth touch scrolling */
+    .touch-scroll {
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+    }
+  </style>
+</head>
+<body class="bg-canvas text-slate-100 antialiased overflow-hidden select-none h-screen h-[100dvh] w-full flex flex-col">
+
+  <!-- ================= HEADER ================= -->
+  <header class="h-14 shrink-0 bg-[#0B111E]/95 border-b border-white/10 px-3 sm:px-4 lg:px-6 flex items-center justify-between z-30">
+    <!-- Brand -->
+    <div class="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-lime/15 border border-lime/40 flex items-center justify-center text-lime shadow-inner shrink-0">
+        <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/>
+        </svg>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-1.5 sm:gap-2">
+          <h1 class="font-display font-bold text-xs sm:text-base tracking-wider text-white truncate">LPU CAMPUS NAV</h1>
+          <span class="hidden md:inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full bg-lime/15 text-lime border border-lime/30 shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full bg-lime animate-pulse"></span>
+            All Routes + iViewd 3D
+          </span>
+        </div>
+        <p class="hidden sm:block text-[10px] sm:text-[11px] text-slate-400 tracking-wider uppercase font-medium truncate">Multi-Color Route Comparison & Shortest Timing</p>
+      </div>
+    </div>
+
+    <!-- Header Right Controls -->
+    <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+      <!-- iViewd 3D Campus View Switcher -->
+      <button id="toggleIviewdBtn" type="button" class="text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-lg bg-lime/15 hover:bg-lime/25 text-lime border border-lime/40 flex items-center gap-1.5 transition shadow-sm shrink-0" title="Open interactive iViewd 3D Campus View">
+        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+        </svg>
+        <span id="iviewdBtnLabel" class="hidden sm:inline">Split / 3D Campus View (iViewd)</span>
+        <span id="iviewdMobileBtnLabel" class="sm:hidden font-semibold">3D</span>
+      </button>
+
+      <!-- Layer Switcher Button -->
+      <button id="toggleLayerBtn" type="button" class="text-xs font-medium px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/10 flex items-center gap-1.5 transition shrink-0" title="Switch between Satellite and Dark Street Map">
+        <svg class="w-4 h-4 text-cyan shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span id="layerLabel" class="hidden sm:inline">Satellite View</span>
+      </button>
+
+      <!-- Reference Site Plan Modal Trigger -->
+      <button id="openSitePlanBtn" type="button" class="text-xs font-medium px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/10 flex items-center gap-1.5 transition shrink-0" title="Campus Info & Dataset">
+        <svg class="w-4 h-4 text-orange shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
+        </svg>
+        <span class="hidden md:inline">Data & Info</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ================= MAIN CONTENT WORKSPACE ================= -->
+  <div class="relative flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- ================= LEFT NAVIGATION PANEL (Desktop Sidebar / Mobile Sheet) ================= -->
+    <aside id="navPanel" class="w-full lg:w-[430px] xl:w-[460px] shrink-0 bg-[#0D1522]/95 backdrop-blur-xl border-r border-white/10 bg-grid-pattern flex flex-col z-30 lg:z-20 lg:h-full lg:max-h-full sheet-half shadow-2xl transition-all duration-300">
+      
+      <!-- Mobile Drag Handle & Peek Bar -->
+      <div id="mobileSheetToggle" class="lg:hidden w-full py-2.5 px-4 flex flex-col items-center justify-center cursor-pointer border-b border-white/10 bg-slate-900/90 hover:bg-slate-800/90 transition select-none shrink-0 touch-none">
+        <div class="w-12 h-1.5 rounded-full bg-slate-500 hover:bg-lime transition mb-2"></div>
+        <div id="mobilePeekBar" class="w-full flex items-center justify-between gap-2">
+          <div class="flex items-center gap-2 min-w-0">
+            <span id="peekDot" class="w-2.5 h-2.5 rounded-full bg-lime shrink-0"></span>
+            <span id="mobilePeekText" class="text-xs font-semibold text-white truncate">Tap to search & view campus routes</span>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <span id="mobileSheetHint" class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-lime/15 text-lime border border-lime/30">
+              Expand ⌃
+            </span>
+            <svg id="sheetToggleIcon" class="w-4 h-4 text-slate-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scrollable Interior -->
+      <div class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5 touch-scroll">
+
+        <!-- Hero Heading -->
+        <div>
+          <h2 class="font-display text-xl sm:text-2xl font-bold text-white tracking-tight">All Routes, Color-Coded.</h2>
+          <p class="text-xs sm:text-sm text-slate-400 mt-0.5">Every available walking path shown together in distinct colors with shortest time highlighted.</p>
+        </div>
+
+        <!-- STEP 1: LOCATION & STARTING POINT CARD -->
+        <div class="p-3.5 rounded-xl bg-slate-900/90 border border-white/10 space-y-3 shadow-md">
+          <div class="flex items-center justify-between">
+            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <span id="gpsDot" class="w-2 h-2 rounded-full bg-cyan"></span>
+              Starting Point (From)
+            </span>
+            <span id="gpsStatusBadge" class="text-[11px] font-medium text-cyan bg-cyan/10 border border-cyan/30 px-2 py-0.5 rounded-md">
+              Main Gate (Default)
+            </span>
+          </div>
+
+          <!-- Prominent "Use My Current Location" Button -->
+          <button id="useLocationBtn" type="button" class="w-full py-2.5 px-3.5 rounded-lg bg-cyan/15 hover:bg-cyan/25 active:scale-[0.99] text-cyan border border-cyan/40 font-medium text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-sm">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06z"/>
+            </svg>
+            <span id="useLocationBtnText">Use My Current Location (GPS)</span>
+          </button>
+
+          <!-- Alert Banner for Denied GPS / Off-Campus -->
+          <div id="locationAlert" class="hidden p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs space-y-1.5">
+            <div class="flex items-start gap-2">
+              <svg class="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+              </svg>
+              <p id="locationAlertText" class="leading-relaxed"></p>
+            </div>
+            <button id="simulateGpsBtn" type="button" class="text-[11px] font-semibold text-lime underline hover:text-lime/80 block pl-6">
+              Simulate On-Campus GPS (Near Baldev Raj Mittal Park)
+            </button>
+          </div>
+
+          <!-- Manual Starting Point Selector -->
+          <div>
+            <label for="startSelect" class="block text-[11px] text-slate-400 mb-1">Or pick any campus starting point:</label>
+            <select id="startSelect" class="w-full bg-slate-950/90 border border-white/15 focus:border-cyan rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-100 outline-none transition">
+              <!-- Populated dynamically via JS -->
+            </select>
+          </div>
+        </div>
+
+        <!-- STEP 2: DESTINATION SEARCH & AUTOCOMPLETE -->
+        <div class="space-y-2.5 relative">
+          <label for="destSearchInput" class="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Destination (To)
+          </label>
+          <div class="relative">
+            <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input 
+              id="destSearchInput" 
+              type="text" 
+              autocomplete="off"
+              placeholder="Search Block 25, Uni Mall, Block 57, Hostels..." 
+              class="w-full bg-slate-900 border border-white/15 focus:border-lime rounded-xl pl-10 pr-9 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition shadow-inner"
+            />
+            <button id="clearSearchBtn" type="button" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Autocomplete Suggestions Dropdown -->
+          <div id="searchDropdown" class="hidden absolute left-0 right-0 top-[68px] bg-[#111A2E] border border-white/15 rounded-xl shadow-2xl max-h-64 overflow-y-auto z-50 divide-y divide-white/5">
+            <!-- Populated by JS -->
+          </div>
+
+          <!-- Category Filter Pills -->
+          <div class="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar" id="categoryPills">
+            <button type="button" data-cat="All" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-lime text-slate-950 font-semibold transition">All (38)</button>
+            <button type="button" data-cat="Academic Blocks" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Academic Blocks</button>
+            <button type="button" data-cat="Hostels" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Hostels</button>
+            <button type="button" data-cat="Facilities" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Facilities</button>
+            <button type="button" data-cat="Gates" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Gates</button>
+            <button type="button" data-cat="Parking" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Parking</button>
+            <button type="button" data-cat="Landmarks" class="cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition">Landmarks</button>
+          </div>
+        </div>
+
+        <!-- Prominent "Show All Routes Together" CTA -->
+        <button id="showRouteBtn" type="button" class="w-full py-3 px-4 rounded-xl bg-lime hover:bg-[#b2f042] active:scale-[0.99] text-slate-950 font-display font-bold text-sm tracking-wide flex items-center justify-center gap-2 shadow-lg shadow-lime/15 transition cursor-pointer">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+          </svg>
+          <span>Show All Routes Together (Color-Coded)</span>
+        </button>
+
+        <!-- ================= MISSING COORDINATE WARNING CARD ================= -->
+        <div id="missingDataCard" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-200 space-y-2.5">
+          <div class="flex items-start gap-2.5">
+            <svg class="w-5 h-5 text-red-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            <div>
+              <h4 id="missingDataTitle" class="font-display font-bold text-sm text-white">Location Data Required</h4>
+              <p id="missingDataDesc" class="text-xs text-red-200/90 mt-1 leading-relaxed"></p>
+            </div>
+          </div>
+          <div class="pt-1 flex flex-wrap gap-2">
+            <button type="button" onclick="selectNearestVerifiedFallback()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-white border border-red-400/30 transition">
+              Route to Nearest Verified Landmark Instead
+            </button>
+          </div>
+        </div>
+
+        <!-- ================= MULTI-COLOR ROUTE SUMMARY CARD ================= -->
+        <div id="routeResultCard" class="hidden rounded-2xl bg-[#131D31] border border-lime/40 shadow-xl overflow-hidden">
+          <!-- Card Header -->
+          <div class="p-4 bg-gradient-to-r from-slate-900 via-[#152338] to-slate-900 border-b border-white/10">
+            <div class="flex items-start justify-between gap-2">
+              <div>
+                <span class="text-[10px] font-bold uppercase tracking-widest text-orange flex items-center gap-1">
+                  <span class="w-2 h-2 rounded-full bg-orange inline-block"></span>
+                  Destination
+                </span>
+                <h3 id="routeDestName" class="font-display font-bold text-lg text-white mt-0.5">Block 25</h3>
+                <p id="routeDestSub" class="text-xs text-slate-400">School of Biotechnology & Biosciences</p>
+              </div>
+              <span id="routeCountBadge" class="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-lime/15 text-lime border border-lime/30 shrink-0">
+                4 Routes Visible
+              </span>
+            </div>
+
+            <!-- Shortest Timing Banner -->
+            <div id="shortestBanner" class="mt-3 p-2.5 rounded-xl bg-lime/15 border border-lime/40 flex items-center justify-between">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="px-2 py-0.5 rounded bg-lime text-slate-950 font-display font-bold text-[10px] uppercase tracking-wider shrink-0">⚡ Shortest</span>
+                <span id="shortestRouteLabel" class="text-xs font-semibold text-white truncate">Route 1: Direct Spine</span>
+              </div>
+              <span id="shortestRouteTiming" class="font-display font-bold text-sm text-lime shrink-0 ml-2">-- min</span>
+            </div>
+
+            <!-- Selected Route Key Metrics Grid -->
+            <div class="grid grid-cols-2 gap-2.5 mt-3">
+              <div class="p-2.5 rounded-xl bg-slate-950/70 border border-white/5">
+                <span id="activeTimeLabel" class="text-[10px] uppercase tracking-wider text-slate-400 block truncate">Focused Route Time</span>
+                <span id="routeTimeValue" class="font-display font-bold text-xl text-lime">-- min</span>
+              </div>
+              <div class="p-2.5 rounded-xl bg-slate-950/70 border border-white/5">
+                <span class="text-[10px] uppercase tracking-wider text-slate-400 block">Walking Distance</span>
+                <span id="routeDistValue" class="font-display font-bold text-xl text-white">-- m</span>
+              </div>
+            </div>
+
+            <!-- Available Routes Comparison List -->
+            <div class="mt-3.5 space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-300">All Routes Shown on Map (Distinct Colors)</span>
+                <button id="fitAllRoutesBtn" type="button" class="text-[10px] font-semibold text-cyan hover:underline">Zoom All</button>
+              </div>
+              <div id="allRoutesList" class="space-y-2">
+                <!-- Populated dynamically with all color-coded routes -->
+              </div>
+            </div>
+
+            <!-- Route Source / Accuracy Notice -->
+            <div id="routeAccuracyNotice" class="mt-3 text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-900/90 border border-white/10 text-slate-300 flex items-center gap-2">
+              <span id="routeAccuracyDot" class="w-2 h-2 rounded-full bg-lime shrink-0"></span>
+              <span id="routeAccuracyText">All routes displayed simultaneously in different colors.</span>
+            </div>
+          </div>
+
+          <!-- Route Origin & Turn-by-Turn Directions -->
+          <div class="p-4 space-y-3">
+            <div class="flex items-center justify-between text-xs text-slate-300">
+              <span>From: <strong id="routeOriginName" class="text-cyan">Main Gate</strong></span>
+              <button id="toggleStepsBtn" type="button" class="text-lime hover:underline font-medium flex items-center gap-1">
+                <span id="toggleStepsText">Hide Directions</span>
+              </button>
+            </div>
+
+            <!-- Step-by-Step List -->
+            <div id="routeStepsContainer" class="space-y-2 max-h-48 overflow-y-auto pr-1 border-t border-white/10 pt-2.5 text-xs">
+              <!-- Populated dynamically -->
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="pt-2 flex items-center gap-2">
+              <button id="clearRouteBtn" type="button" class="flex-1 py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-white/10 text-xs font-semibold transition">
+                Clear Routes
+              </button>
+              <button id="changeDestBtn" type="button" class="flex-1 py-2 px-3 rounded-lg bg-orange/15 hover:bg-orange/25 text-orange border border-orange/30 text-xs font-semibold transition">
+                Another Destination
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= QUICK SELECT DIRECTORY ================= -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <h3 class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Verified Campus Directory</h3>
+            <span id="directoryCount" class="text-[11px] text-slate-500">38 locations</span>
+          </div>
+          <div id="directoryList" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+            <!-- Populated dynamically by JS -->
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <!-- ================= MAIN WORKSPACE: MAP + IVIEWD 3D CAMPUS VIEW ================= -->
+    <main class="relative flex-1 h-full order-1 lg:order-2 flex flex-col xl:flex-row overflow-hidden">
+      
+      <!-- Interactive Multi-Route Map Pane -->
+      <div id="mapPane" class="relative flex-1 h-full w-full transition-all duration-300">
+        <div id="map" class="w-full h-full z-10"></div>
+
+        <!-- LOADING OVERLAY PILL -->
+        <div id="loadingToast" class="hidden absolute top-4 left-1/2 -translate-x-1/2 z-20 bg-slate-900/95 border border-lime/40 text-white px-4 py-2 rounded-full shadow-xl flex items-center gap-2.5 text-xs font-medium">
+          <svg class="w-4 h-4 text-lime animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span id="loadingToastText">Drawing all available routes in distinct colors...</span>
+        </div>
+
+        <!-- FLOATING MAP CONTROLS (Top-Right) -->
+        <div class="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 flex flex-col gap-1.5 sm:gap-2">
+          <button id="zoomInBtn" type="button" title="Zoom In" class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/15 shadow-lg flex items-center justify-center transition">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m6-6H6"/></svg>
+          </button>
+          <button id="zoomOutBtn" type="button" title="Zoom Out" class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-white border border-white/15 shadow-lg flex items-center justify-center transition">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 12H6"/></svg>
+          </button>
+          <button id="recenterBtn" type="button" title="Recenter Campus Overview" class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-cyan border border-white/15 shadow-lg flex items-center justify-center transition">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+            </svg>
+          </button>
+          <button id="mapGpsBtn" type="button" title="Center My GPS Location" class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-lime border border-lime/40 shadow-lg flex items-center justify-center transition">
+            <svg class="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06z"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- MOBILE ROUTE LEGEND PILL (Top-Left on Mobile) -->
+        <div class="lg:hidden absolute top-3 left-3 z-20">
+          <button id="mobileLegendToggleBtn" type="button" class="px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 border border-white/15 shadow-lg flex items-center gap-1.5 text-xs font-semibold backdrop-blur">
+            <span class="w-2.5 h-2.5 rounded-full bg-lime inline-block"></span>
+            <span>Route Colors</span>
+            <svg id="mobileLegendChevron" class="w-3.5 h-3.5 text-slate-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+          </button>
+          <div id="mobileLegendDropdown" class="hidden mt-1.5 bg-slate-900/95 backdrop-blur-md border border-white/15 rounded-xl p-3 shadow-2xl text-[11px] space-y-1.5 w-[220px]">
+            <div class="font-display font-bold text-slate-200 uppercase tracking-wider text-[10px] flex items-center justify-between pb-1 border-b border-white/10">
+              <span>Color Legend</span>
+              <button id="closeMobileLegendBtn" type="button" class="text-slate-400 hover:text-white text-xs px-1">✕</button>
+            </div>
+            <div class="flex items-center gap-2 text-slate-200">
+              <span class="w-4 h-1.5 bg-[#A3E635] inline-block rounded-full"></span>
+              <span><strong>R1 (Lime):</strong> Shortest / Fastest</span>
+            </div>
+            <div class="flex items-center gap-2 text-slate-200">
+              <span class="w-4 h-1.5 bg-[#00E5FF] inline-block rounded-full"></span>
+              <span><strong>R2 (Cyan):</strong> 2nd Fastest</span>
+            </div>
+            <div class="flex items-center gap-2 text-slate-200">
+              <span class="w-4 h-1.5 bg-[#D946EF] inline-block rounded-full"></span>
+              <span><strong>R3 (Magenta):</strong> Alt. Corridor</span>
+            </div>
+            <div class="flex items-center gap-2 text-slate-200">
+              <span class="w-4 h-1.5 bg-[#F59E0B] inline-block rounded-full"></span>
+              <span><strong>R4 (Amber):</strong> Scenic / Outer</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- DESKTOP MULTI-COLOR ROUTE LEGEND (Bottom-Right) -->
+        <div id="desktopLegend" class="hidden lg:block absolute bottom-5 right-4 z-20 bg-slate-900/95 backdrop-blur-md border border-white/15 rounded-xl px-3.5 py-3 shadow-xl text-[11px] space-y-1.5 max-w-[250px]">
+          <div class="font-display font-bold text-slate-200 uppercase tracking-wider text-[10px] flex items-center justify-between">
+            <span>All Routes Color Legend</span>
+            <span class="text-[9px] text-lime font-semibold">Simultaneous</span>
+          </div>
+          <div class="flex items-center gap-2 text-slate-200">
+            <span class="w-5 h-1.5 bg-[#A3E635] inline-block rounded-full shadow-sm"></span>
+            <span><strong>Route 1 (Lime):</strong> Shortest / Fastest</span>
+          </div>
+          <div class="flex items-center gap-2 text-slate-200">
+            <span class="w-5 h-1.5 bg-[#00E5FF] inline-block rounded-full shadow-sm"></span>
+            <span><strong>Route 2 (Cyan):</strong> 2nd Fastest Path</span>
+          </div>
+          <div class="flex items-center gap-2 text-slate-200">
+            <span class="w-5 h-1.5 bg-[#D946EF] inline-block rounded-full shadow-sm"></span>
+            <span><strong>Route 3 (Magenta):</strong> Alt. Corridor</span>
+          </div>
+          <div class="flex items-center gap-2 text-slate-200">
+            <span class="w-5 h-1.5 bg-[#F59E0B] inline-block rounded-full shadow-sm"></span>
+            <span><strong>Route 4 (Amber):</strong> Scenic / Outer</span>
+          </div>
+          <div class="pt-1 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400">
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-cyan inline-block"></span> Start</span>
+            <span class="flex items-center gap-1"><span class="w-2.5 h-2.5 rounded-full bg-orange inline-block"></span> Destination</span>
+          </div>
+        </div>
+      </div>
+      </div>
+
+      <!-- ================= IVIEWD.COM/LPU2/ 3D CAMPUS VIEW PANE ================= -->
+      <div id="iviewdPane" class="hidden fixed inset-0 z-40 bg-[#090D16] flex flex-col lg:relative lg:inset-auto lg:z-20 lg:w-full lg:xl:w-1/2 lg:h-full lg:border-t-0 lg:border-l border-white/15">
+        <!-- Pane Top Bar -->
+        <div class="h-11 px-3.5 bg-slate-900/95 border-b border-white/10 flex items-center justify-between text-xs shrink-0">
+          <div class="flex items-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-lime animate-pulse"></span>
+            <span class="font-display font-bold text-white">iViewd LPU 3D Tour</span>
+            <span class="text-[10px] text-slate-400 hidden sm:inline">(iviewd.com/lpu2/)</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button id="expandIviewdFullBtn" type="button" class="hidden xl:inline-block px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan border border-white/10 text-[11px] font-medium transition">
+              Full Width 3D
+            </button>
+            <a href="https://iviewd.com/lpu2/" target="_blank" rel="noopener noreferrer" class="px-2.5 py-1 rounded bg-lime/15 hover:bg-lime/25 text-lime border border-lime/30 text-[11px] font-semibold transition flex items-center gap-1">
+              <span>Open ↗</span>
+            </a>
+            <button id="closeIviewdPaneBtn" type="button" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/10 text-xs font-semibold flex items-center gap-1" title="Close 3D View">
+              <span>Back to Map</span>
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <!-- Embedded iViewd LPU2 Virtual Tour Iframe -->
+        <iframe 
+          id="iviewdIframe"
+          src="https://iviewd.com/lpu2/" 
+          class="w-full flex-1 border-0 bg-canvas"
+          allow="fullscreen; geolocation; gyroscope; accelerometer"
+          title="LPU iViewd 3D Campus Virtual Map">
+        </iframe>
+      </div>
+
+      <!-- WELCOME / LOCATION PERMISSION OVERLAY MODAL -->
+      <div id="welcomeOverlay" class="absolute inset-0 z-30 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="max-w-md w-full max-h-[90dvh] overflow-y-auto bg-[#0F1724] border border-white/15 rounded-2xl p-4 sm:p-6 shadow-2xl space-y-4 sm:space-y-5 animate-fade-in touch-scroll">
+          <div class="flex items-center gap-3">
+            <div class="w-11 h-11 rounded-xl bg-lime/15 border border-lime/40 flex items-center justify-center text-lime shrink-0">
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+            </div>
+            <div>
+              <span class="text-[10px] font-bold uppercase tracking-widest text-lime">LPU Multi-Route + iViewd 3D</span>
+              <h2 class="font-display font-bold text-xl text-white">See all routes together in distinct colors</h2>
+            </div>
+          </div>
+
+          <p class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            Pick any starting point and destination to view <strong>all available campus routes simultaneously</strong>—each drawn in a different solid color (<strong>Lime</strong>, <strong>Cyan</strong>, <strong>Magenta</strong>, <strong>Amber</strong>) along with the <strong>iviewd.com/lpu2/</strong> 3D Campus View.
+          </p>
+
+          <div class="space-y-2.5 pt-1">
+            <button id="welcomeUseGpsBtn" type="button" class="w-full py-3 px-4 rounded-xl bg-lime hover:bg-[#b2f042] text-slate-950 font-display font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-lime/20 transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06z"/>
+              </svg>
+              <span>Use My Current Location</span>
+            </button>
+
+            <button id="welcomeStartMainGateBtn" type="button" class="w-full py-2.5 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-white/10 font-medium text-xs sm:text-sm transition">
+              Start from Main Gate & Preview Multi-Color Routes
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ================= DATA & SITE PLAN REFERENCE MODAL ================= -->
+  <div id="sitePlanModal" class="hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+    <div class="bg-[#0F1724] border border-white/15 rounded-2xl max-w-2xl w-full max-h-[85vh] max-h-[85dvh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="p-4 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <h3 class="font-display font-bold text-base text-white">LPU Site Plan, iViewd 3D & Multi-Route System</h3>
+          <p class="text-xs text-slate-400">Official layout vs. verified GPS dataset</p>
+        </div>
+        <button id="closeSitePlanBtn" type="button" class="text-slate-400 hover:text-white p-1">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="p-5 overflow-y-auto space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+        <div class="p-3.5 rounded-xl bg-lime/10 border border-lime/30 text-lime">
+          <strong>Multi-Color Simultaneous Routing + iViewd 3D:</strong> Every available walking path between your start and destination is drawn on the map at the same time in its own high-contrast color so you can visually compare all corridors side-by-side.
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+          <div class="p-3 rounded-lg bg-slate-900 border border-white/10">
+            <strong class="text-white block mb-1">Included in GPS File (38 Places):</strong>
+            Main Gate, Uni Mall, Block 18, Block 20, Blocks 25–28, Block 39, Block 41-D, Blocks 55–57, Division of Admissions, DSW, Shanti Devi Mittal Auditorium, Baldev Raj Mittal Auditorium, Uni Health Center, Helipad, Robo Park, Hostels (GH 2, 3, 4, BH 2, 3, 6, 9, Studios), Parking & Grounds.
+          </div>
+          <div class="p-3 rounded-lg bg-slate-900 border border-white/10">
+            <strong class="text-orange block mb-1">iViewd 3D Campus Tour Integration:</strong>
+            Click <em>"Split / 3D Campus View (iViewd)"</em> in the top header to open <code>https://iviewd.com/lpu2/</code> right next to the multi-route map.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= APPLICATION JAVASCRIPT ================= -->
+  <script>
+    /*************************************************************************
+     * 1. CENTRAL CAMPUS LOCATION DATA STRUCTURE
+     *************************************************************************/
+    const VERIFIED_CAMPUS_LOCATIONS = [
+      { id: "main-gate", name: "Main Gate", lat: 31.260682600265973, lng: 75.70673643459993, category: "Gates", description: "Primary University Entrance on G.T. Road" },
+      { id: "main-gate-parking", name: "LPU Main Gate Parking", lat: 31.259795285272236, lng: 75.70612623204016, category: "Parking", description: "Visitor & Main Gate Parking Zone" },
+      { id: "car-parking", name: "Car Parking", lat: 31.25968505545802, lng: 75.70561463642755, category: "Parking", description: "Front Zone Vehicular Parking" },
+      { id: "baldev-park", name: "LPU Baldev Raj Mittal Park", lat: 31.25896880145322, lng: 75.70695601928821, category: "Landmarks", description: "Green Belt & Campus Park near Entrance" },
+      { id: "uni-health", name: "Uni Health Center", lat: 31.25807527532111, lng: 75.7067751010711, category: "Facilities", description: "Block 08C • Uni Hospital & 24/7 Medical Clinic" },
+      { id: "baldev-auditorium", name: "Sh. Baldevraj Mittal Auditorium", lat: 31.258393048436687, lng: 75.70785427111335, category: "Facilities", description: "Major Campus Auditorium & Event Venue" },
+      { id: "arch-school", name: "Lovely School of Architecture, Planning and Design", lat: 31.25696007923925, lng: 75.70729329339642, category: "Academic Blocks", description: "Block 08A • Division of Architecture & Design" },
+      { id: "product-block", name: "Product and Industrial Block", lat: 31.25658289918768, lng: 75.70656909696177, category: "Academic Blocks", description: "Industrial Design & Workshops" },
+      { id: "uni-mall", name: "Uni Mall", lat: 31.255880310817425, lng: 75.70545273313382, category: "Facilities", description: "Block 15A Unicenter • Shops, Food Court & Student Hub" },
+      { id: "block-18", name: "LPU Block 18 (Humanities Block)", lat: 31.255250167564455, lng: 75.70374550669462, category: "Academic Blocks", description: "Department of Education & Physical Education" },
+      { id: "helipad", name: "LPU Helipad", lat: 31.25440063509739, lng: 75.70303805171389, category: "Landmarks", description: "Central Campus Helipad" },
+      { id: "robo-park", name: "Robo Park LPU", lat: 31.253541007844543, lng: 75.70332442394115, category: "Landmarks", description: "Robotics & Technological Landmark Park" },
+      { id: "block-25", name: "Block 25", lat: 31.252893584673764, lng: 75.70244930684082, category: "Academic Blocks", description: "School of Biotechnology & Biosciences" },
+      { id: "block-26", name: "Block 26", lat: 31.252874240960963, lng: 75.70287777002547, category: "Academic Blocks", description: "School of Electronics & Electrical Engineering" },
+      { id: "block-27", name: "Block 27", lat: 31.25287238634719, lng: 75.70327243072079, category: "Academic Blocks", description: "School of Physical Sciences" },
+      { id: "block-28", name: "Block 28", lat: 31.25287697231214, lng: 75.7031156066619, category: "Academic Blocks", description: "School of Agriculture" },
+      { id: "admissions", name: "Division of Admissions", lat: 31.252725635350302, lng: 75.70477644557265, category: "Facilities", description: "Block 31 • Admissions Office & Museum of Academics" },
+      { id: "shanti-auditorium", name: "Shanti Devi Mittal Auditorium", lat: 31.2521069597984, lng: 75.70416185569496, category: "Facilities", description: "Block 35 • Central Address & Cultural Showcase Venue" },
+      { id: "block-39", name: "LPU Innovation Studio Block 39", lat: 31.251203641776716, lng: 75.705386007144, category: "Academic Blocks", description: "Innovation & Research Studio Hub" },
+      { id: "boys-studio-11", name: "Boys Studio 11", lat: 31.249152997811905, lng: 75.70713588201998, category: "Hostels", description: "Men's Residential Studio Apartments 11" },
+      { id: "boys-studio-13", name: "Boys Studio-13", lat: 31.24837334980941, lng: 75.7082650920084, category: "Hostels", description: "Men's Residential Studio Apartments 13" },
+      { id: "boys-hostel-9", name: "Boys Hostel 9", lat: 31.2490963300326, lng: 75.70828780531417, category: "Hostels", description: "Men's Residential Hostel 9" },
+      { id: "boys-hostel-3", name: "Boys Hostel 3", lat: 31.249727342339717, lng: 75.7003136468527, category: "Hostels", description: "Block 49 • Men's Residential Hostel 3" },
+      { id: "boys-hostel-2", name: "Boys Hostel 2", lat: 31.249850748659856, lng: 75.70070158595968, category: "Hostels", description: "Block 48 • Men's Residential Hostel 2" },
+      { id: "girls-hostel-3", name: "Girls Hostel 3", lat: 31.256109150615316, lng: 75.70396609604089, category: "Hostels", description: "Block 11 • Women's Residential Hostel 3" },
+      { id: "girls-hostel-4", name: "Girls Hostel 4", lat: 31.256064821719097, lng: 75.7045581416388, category: "Hostels", description: "Block 12 • Women's Residential Hostel 4" },
+      { id: "girls-hostel-2", name: "Girls Hostel 2 (12)", lat: 31.257032422679238, lng: 75.70604408543566, category: "Hostels", description: "Block 10 • Women's Residential Hostel 2" },
+      { id: "girls-studio", name: "Girls Studio", lat: 31.2582962690309, lng: 75.70445694028133, category: "Hostels", description: "Women's Studio Apartments" },
+      { id: "dsw", name: "Division of Student Welfare", lat: 31.25518883180537, lng: 75.7063083350584, category: "Facilities", description: "Block 13 • Division of Student Affairs & Help Desk" },
+      { id: "main-parking", name: "LPU Main Parking", lat: 31.25287982678547, lng: 75.70577993988303, category: "Parking", description: "Central Campus Parking Area" },
+      { id: "block-57", name: "LPU Block 57", lat: 31.24626237373064, lng: 75.70369718600806, category: "Academic Blocks", description: "School of Polytechnic (South Campus)" },
+      { id: "block-56", name: "Block 56", lat: 31.24673844697838, lng: 75.70354485745925, category: "Academic Blocks", description: "School of Civil Engineering" },
+      { id: "block-55", name: "Block 55", lat: 31.247055117485772, lng: 75.70351829933065, category: "Academic Blocks", description: "School of Mechanical Engineering" },
+      { id: "boys-hostel-6", name: "Boys Hostel 6", lat: 31.248362024075657, lng: 75.70414418002875, category: "Hostels", description: "Block 54 • Men's Residential Hostel 6" },
+      { id: "football-ground", name: "LPU Football Ground", lat: 31.246966613289644, lng: 75.70194438099367, category: "Facilities", description: "South Sports Complex & Football Turf" },
+      { id: "indoor-playground", name: "Indoor Playground", lat: 31.250591183211817, lng: 75.70204132917067, category: "Facilities", description: "Indoor Sports & Recreation Arena" },
+      { id: "block-41d", name: "41-D Block", lat: 31.25198441291266, lng: 75.70087998459856, category: "Hostels", description: "Staff Apartments 41-D" },
+      { id: "block-20", name: "Block 20", lat: 31.254128785904147, lng: 75.70022532543015, category: "Academic Blocks", description: "School of Law" },
+      { id: "block-34", name: "Block 34", lat: 31.251493715932597, lng: 75.70447282413328, category: "Academic Blocks", description: "School of Computer Science & Eng." }
+
+    ];
+
+    const UNVERIFIED_SITE_PLAN_LOCATIONS = [
+      { id: "unverified-37", name: "Block 37 (Central Library)", category: "Academic Blocks", missingCoordinates: true, nearestId: "shanti-auditorium", note: "Listed on the official LPU site plan near Block 35, but exact GPS coordinates are not in the supplied coordinate text file." },
+      { id: "unverified-32", name: "Block 32 (Office of the Vice Chancellor)", category: "Facilities", missingCoordinates: true, nearestId: "admissions", note: "Listed on the official LPU site plan next to Block 31 (Division of Admissions), awaiting verified GPS coordinates." },
+      { id: "unverified-gate1", name: "Gate 1 / 1A / 1B", category: "Gates", missingCoordinates: true, nearestId: "main-gate", note: "Shown on G.T. Road in the site plan. Use the verified Main Gate coordinate instead." },
+      { id: "unverified-gate4", name: "Gate 4", category: "Gates", missingCoordinates: true, nearestId: "main-gate", note: "Exact coordinates for Gate 4 are not included in the supplied dataset." }
+    ];
+
+    const ALL_SEARCHABLE_LOCATIONS = [...VERIFIED_CAMPUS_LOCATIONS, ...UNVERIFIED_SITE_PLAN_LOCATIONS];
+
+    // Distinct, high-visibility color palette for showing all routes together
+    const ROUTE_PALETTE = [
+      { hex: '#A3E635', name: 'Lime Green', twBg: 'bg-[#A3E635]', twText: 'text-[#A3E635]', twBorder: 'border-[#A3E635]' },
+      { hex: '#00E5FF', name: 'Electric Cyan', twBg: 'bg-[#00E5FF]', twText: 'text-[#00E5FF]', twBorder: 'border-[#00E5FF]' },
+      { hex: '#D946EF', name: 'Vivid Magenta', twBg: 'bg-[#D946EF]', twText: 'text-[#D946EF]', twBorder: 'border-[#D946EF]' },
+      { hex: '#F59E0B', name: 'Amber Gold', twBg: 'bg-[#F59E0B]', twText: 'text-[#F59E0B]', twBorder: 'border-[#F59E0B]' }
+    ];
+
+    // Campus Hub Waypoints to guarantee multiple distinct campus corridors are discovered
+    const CAMPUS_ROUTING_HUBS = [
+      { id: "uni-mall", name: "Uni Mall Central Spine" },
+      { id: "dsw", name: "Student Welfare (DSW) Corridor" },
+      { id: "block-18", name: "Block 18 Humanities Walkway" },
+      { id: "robo-park", name: "Robo Park Central Avenue" },
+      { id: "helipad", name: "Helipad West Corridor" },
+      { id: "admissions", name: "Admissions Block 31 Walk" },
+      { id: "shanti-auditorium", name: "Block 35 Auditorium Spine" },
+      { id: "uni-health", name: "Uni Health East Corridor" },
+      { id: "girls-hostel-4", name: "GH-4 Inner Campus Road" },
+      { id: "main-parking", name: "Central Parking Walkway" }
+    ];
+
+    /*************************************************************************
+     * 2. STATE MANAGEMENT
+     *************************************************************************/
+    let map;
+    let satelliteTileLayer;
+    let darkStreetTileLayer;
+    let currentLayerMode = 'satellite';
+
+    let startPoint = {
+      name: VERIFIED_CAMPUS_LOCATIONS[0].name,
+      lat: VERIFIED_CAMPUS_LOCATIONS[0].lat,
+      lng: VERIFIED_CAMPUS_LOCATIONS[0].lng,
+      isGps: false
+    };
+
+    let selectedDestination = null;
+    let activeCategory = 'All';
+    let nearestFallbackTargetId = null;
+
+    // Multi-Route State
+    let availableRoutes = [];
+    let selectedRouteIndex = 0;
+    let routePolylines = [];
+
+    // Map Layers & Markers
+    let campusMarkersMap = {};
+    let startMarker = null;
+    let destMarker = null;
+
+    /*************************************************************************
+     * 3. INITIALIZE LEAFLET MAP & MARKERS
+     *************************************************************************/
+    function initMap() {
+      map = L.map('map', {
+        center: [31.2535, 75.7042],
+        zoom: 16,
+        zoomControl: false
+      });
+
+      satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+        maxZoom: 19
+      });
+
+      darkStreetTileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19,
+        className: 'dark-osm-tiles'
+      });
+
+      satelliteTileLayer.addTo(map);
+      renderCampusMarkers();
+      updateStartMarker();
+    }
+
+    function createCustomMarkerIcon(type, label) {
+      if (type === 'start') {
+        return L.divIcon({
+          className: '',
+          html: `
+            <div class="relative flex items-center justify-center">
+              <div class="w-5 h-5 rounded-full bg-cyan border-2 border-white marker-start-pulse shadow-lg"></div>
+              <div class="absolute -top-7 whitespace-nowrap bg-slate-950/90 text-cyan border border-cyan/40 text-[10px] font-bold px-2 py-0.5 rounded shadow">START</div>
+            </div>
+          `,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10]
+        });
+      }
+      if (type === 'destination') {
+        return L.divIcon({
+          className: '',
+          html: `
+            <div class="relative flex items-center justify-center">
+              <div class="w-6 h-6 rounded-full bg-orange border-2 border-white marker-dest-pulse shadow-xl flex items-center justify-center text-white text-[10px] font-bold">★</div>
+              <div class="absolute -top-7 whitespace-nowrap bg-slate-950/95 text-orange border border-orange/50 text-[10px] font-bold px-2 py-0.5 rounded shadow">${label || 'DEST'}</div>
+            </div>
+          `,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+      }
+      return L.divIcon({
+        className: '',
+        html: `
+          <div class="group relative flex items-center justify-center">
+            <div class="w-3.5 h-3.5 rounded-full bg-slate-900 border-2 border-lime hover:scale-125 transition transform shadow-md"></div>
+          </div>
+        `,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7]
+      });
+    }
+
+    function renderCampusMarkers() {
+      Object.values(campusMarkersMap).forEach(m => map.removeLayer(m));
+      campusMarkersMap = {};
+
+      VERIFIED_CAMPUS_LOCATIONS.forEach(loc => {
+        if (activeCategory !== 'All' && loc.category !== activeCategory) return;
+
+        const marker = L.marker([loc.lat, loc.lng], {
+          icon: createCustomMarkerIcon('campus', loc.name)
+        }).addTo(map);
+
+        const popupHtml = `
+          <div class="space-y-1.5 min-w-[190px]">
+            <span class="text-[10px] font-semibold uppercase tracking-wider text-lime">${loc.category}</span>
+            <h4 class="font-display font-bold text-sm text-white">${loc.name}</h4>
+            <p class="text-xs text-slate-300">${loc.description || ''}</p>
+            <div class="pt-1.5 flex gap-1.5">
+              <button onclick="setAsStartById('${loc.id}')" class="flex-1 py-1.5 px-2 rounded-lg bg-cyan/20 text-cyan border border-cyan/40 font-bold text-[11px] hover:bg-cyan/30 transition">
+                Set Start
+              </button>
+              <button onclick="selectDestinationById('${loc.id}', true)" class="flex-1 py-1.5 px-2 rounded-lg bg-lime text-slate-950 font-bold text-[11px] hover:opacity-90 transition">
+                All Routes Here
+              </button>
+            </div>
+          </div>
+        `;
+        marker.bindPopup(popupHtml);
+        campusMarkersMap[loc.id] = marker;
+      });
+    }
+
+    window.setAsStartById = function(id) {
+      const chosen = VERIFIED_CAMPUS_LOCATIONS.find(l => l.id === id);
+      if (!chosen) return;
+      startPoint = {
+        name: chosen.name,
+        lat: chosen.lat,
+        lng: chosen.lng,
+        isGps: false
+      };
+      document.getElementById('startSelect').value = chosen.id;
+      document.getElementById('gpsStatusBadge').textContent = chosen.name;
+      updateStartMarker();
+      if (selectedDestination && !selectedDestination.missingCoordinates) {
+        calculateAndDisplayRoute();
+      }
+    };
+
+    function updateStartMarker() {
+      if (startMarker) map.removeLayer(startMarker);
+      startMarker = L.marker([startPoint.lat, startPoint.lng], {
+        icon: createCustomMarkerIcon('start'),
+        zIndexOffset: 900
+      }).addTo(map);
+      startMarker.bindPopup(`
+        <div class="text-xs">
+          <strong class="text-cyan block">Starting Point</strong>
+          <span>${startPoint.name}</span>
+        </div>
+      `);
+    }
+
+    /*************************************************************************
+     * 4. POPULATE STARTING POINT SELECTOR & DIRECTORY LIST
+     *************************************************************************/
+    function populateStartSelector() {
+      const select = document.getElementById('startSelect');
+      select.innerHTML = '';
+
+      VERIFIED_CAMPUS_LOCATIONS.forEach(loc => {
+        const opt = document.createElement('option');
+        opt.value = loc.id;
+        opt.textContent = `${loc.name} (${loc.category})`;
+        select.appendChild(opt);
+      });
+
+      select.addEventListener('change', (e) => {
+        const chosen = VERIFIED_CAMPUS_LOCATIONS.find(l => l.id === e.target.value);
+        if (chosen) {
+          startPoint = {
+            name: chosen.name,
+            lat: chosen.lat,
+            lng: chosen.lng,
+            isGps: false
+          };
+          document.getElementById('gpsStatusBadge').textContent = chosen.name;
+          updateStartMarker();
+          if (selectedDestination && !selectedDestination.missingCoordinates) {
+            calculateAndDisplayRoute();
+          } else {
+            map.panTo([chosen.lat, chosen.lng]);
+          }
+        }
+      });
+    }
+
+    function renderDirectoryList() {
+      const container = document.getElementById('directoryList');
+      const countEl = document.getElementById('directoryCount');
+      container.innerHTML = '';
+
+      const filtered = VERIFIED_CAMPUS_LOCATIONS.filter(loc => activeCategory === 'All' || loc.category === activeCategory);
+      countEl.textContent = `${filtered.length} verified places`;
+
+      filtered.forEach(loc => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'w-full text-left p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 border border-white/5 hover:border-lime/40 flex items-center justify-between gap-2 transition group';
+        btn.innerHTML = `
+          <div class="min-w-0">
+            <div class="text-xs font-semibold text-slate-100 group-hover:text-lime truncate">${loc.name}</div>
+            <div class="text-[11px] text-slate-400 truncate">${loc.description}</div>
+          </div>
+          <span class="shrink-0 text-[10px] font-medium px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/10 group-hover:bg-lime group-hover:text-slate-950 transition">
+            All Routes
+          </span>
+        `;
+        btn.addEventListener('click', () => {
+          selectDestinationById(loc.id, true);
+        });
+        container.appendChild(btn);
+      });
+    }
+
+    /*************************************************************************
+     * 5. GEOLOCATION API & ON-CAMPUS SIMULATION
+     *************************************************************************/
+    function requestUserGeolocation() {
+      const btnText = document.getElementById('useLocationBtnText');
+      const alertBox = document.getElementById('locationAlert');
+
+      alertBox.classList.add('hidden');
+      btnText.textContent = 'Locating via Browser GPS...';
+
+      if (!navigator.geolocation) {
+        showLocationAlert('Geolocation is not supported by your browser. Please select a starting point manually.');
+        btnText.textContent = 'Use My Current Location (GPS)';
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const userLat = pos.coords.latitude;
+          const userLng = pos.coords.longitude;
+          btnText.textContent = 'Use My Current Location (GPS)';
+
+          const distFromCampusMeters = computeHaversineMeters(userLat, userLng, 31.255, 75.705);
+
+          startPoint = {
+            name: 'My Current GPS Location',
+            lat: userLat,
+            lng: userLng,
+            isGps: true
+          };
+          document.getElementById('gpsStatusBadge').textContent = 'Live GPS Active';
+          updateStartMarker();
+
+          if (distFromCampusMeters > 5000) {
+            showLocationAlert(`Your live GPS is ${(distFromCampusMeters / 1000).toFixed(1)} km away from LPU Phagwara campus. You can route from your current location, choose a campus gate manually, or click below to simulate being inside LPU.`);
+          } else {
+            map.flyTo([userLat, userLng], 17);
+          }
+
+          if (selectedDestination && !selectedDestination.missingCoordinates) {
+            calculateAndDisplayRoute();
+          }
+        },
+        () => {
+          btnText.textContent = 'Use My Current Location (GPS)';
+          showLocationAlert('Location permission was denied or unavailable. No problem — you can select any campus gate or landmark manually above, or simulate an on-campus GPS position.');
+        },
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    }
+
+    function showLocationAlert(message) {
+      const alertBox = document.getElementById('locationAlert');
+      const alertText = document.getElementById('locationAlertText');
+      alertText.textContent = message;
+      alertBox.classList.remove('hidden');
+    }
+
+    function simulateOnCampusGps() {
+      const simLoc = VERIFIED_CAMPUS_LOCATIONS.find(l => l.id === 'baldev-park');
+      startPoint = {
+        name: 'Simulated GPS (Baldev Raj Mittal Park)',
+        lat: simLoc.lat,
+        lng: simLoc.lng,
+        isGps: true
+      };
+      document.getElementById('gpsStatusBadge').textContent = 'On-Campus GPS (Sim)';
+      document.getElementById('locationAlert').classList.add('hidden');
+      updateStartMarker();
+      map.flyTo([startPoint.lat, startPoint.lng], 17);
+
+      if (selectedDestination && !selectedDestination.missingCoordinates) {
+        calculateAndDisplayRoute();
+      }
+    }
+
+    /*************************************************************************
+     * 6. SEARCH & DESTINATION SELECTION
+     *************************************************************************/
+    function setupSearchAutocomplete() {
+      const input = document.getElementById('destSearchInput');
+      const dropdown = document.getElementById('searchDropdown');
+      const clearBtn = document.getElementById('clearSearchBtn');
+
+      function updateDropdown(query) {
+        const q = query.trim().toLowerCase();
+        dropdown.innerHTML = '';
+
+        const matches = ALL_SEARCHABLE_LOCATIONS.filter(item => {
+          return (
+            item.name.toLowerCase().includes(q) ||
+            item.category.toLowerCase().includes(q) ||
+            (item.description && item.description.toLowerCase().includes(q))
+          );
+        }).slice(0, 10);
+
+        if (matches.length === 0) {
+          dropdown.innerHTML = `
+            <div class="p-3.5 text-xs text-slate-400">
+              No matching block found. Try searching <strong>Block 25</strong>, <strong>Uni Mall</strong>, <strong>Block 34</strong>, or <strong>Main Gate</strong>.
+            </div>
+          `;
+          dropdown.classList.remove('hidden');
+          return;
+        }
+
+        matches.forEach(item => {
+          const row = document.createElement('button');
+          row.type = 'button';
+          row.className = 'w-full text-left px-3.5 py-2.5 hover:bg-slate-800/90 flex items-center justify-between gap-2 transition';
+
+          const badgeHtml = item.missingCoordinates
+            ? `<span class="text-[10px] font-semibold px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30 shrink-0">Coords Required</span>`
+            : `<span class="text-[10px] font-medium px-2 py-0.5 rounded bg-lime/15 text-lime border border-lime/30 shrink-0">${item.category}</span>`;
+
+          row.innerHTML = `
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-semibold text-white truncate">${item.name}</div>
+              <div class="text-[11px] text-slate-400 truncate">${item.description || item.note || ''}</div>
+            </div>
+            ${badgeHtml}
+          `;
+
+          row.addEventListener('click', () => {
+            dropdown.classList.add('hidden');
+            selectDestinationObject(item, true);
+          });
+
+          dropdown.appendChild(row);
+        });
+
+        dropdown.classList.remove('hidden');
+      }
+
+      input.addEventListener('focus', () => updateDropdown(input.value));
+      input.addEventListener('input', (e) => {
+        clearBtn.classList.toggle('hidden', !e.target.value);
+        updateDropdown(e.target.value);
+      });
+
+      clearBtn.addEventListener('click', () => {
+        input.value = '';
+        clearBtn.classList.add('hidden');
+        dropdown.classList.add('hidden');
+        input.focus();
+      });
+
+      document.addEventListener('click', (e) => {
+        if (!input.contains(e.target) && !dropdown.contains(e.target)) {
+          dropdown.classList.add('hidden');
+        }
+      });
+    }
+
+    window.selectDestinationById = function(id, autoRoute = true) {
+      const found = ALL_SEARCHABLE_LOCATIONS.find(l => l.id === id);
+      if (found) selectDestinationObject(found, autoRoute);
+    };
+
+    window.selectNearestVerifiedFallback = function() {
+      if (nearestFallbackTargetId) {
+        selectDestinationById(nearestFallbackTargetId, true);
+      }
+    };
+
+    function selectDestinationObject(loc, autoRoute = false) {
+      selectedDestination = loc;
+      const input = document.getElementById('destSearchInput');
+      const clearBtn = document.getElementById('clearSearchBtn');
+      input.value = loc.name;
+      clearBtn.classList.remove('hidden');
+
+      const missingCard = document.getElementById('missingDataCard');
+      const routeCard = document.getElementById('routeResultCard');
+
+      if (loc.missingCoordinates) {
+        routeCard.classList.add('hidden');
+        missingCard.classList.remove('hidden');
+        document.getElementById('missingDataTitle').textContent = `${loc.name} — Location Data Required`;
+        document.getElementById('missingDataDesc').textContent = loc.note;
+        nearestFallbackTargetId = loc.nearestId;
+        clearMapRouteLayers();
+        return;
+      }
+
+      missingCard.classList.add('hidden');
+
+      if (autoRoute) {
+        calculateAndDisplayRoute();
+      }
+    }
+
+    /*************************************************************************
+     * 7. MULTI-COLOR ALL-ROUTES ENGINE
+     * Discovers all available routes, assigns each a distinct vibrant color,
+     * and renders ALL of them together on the map with shortest time first.
+     *************************************************************************/
+    function formatWalkingTime(distanceMeters) {
+      const totalSeconds = Math.max(15, Math.round(distanceMeters / 1.35));
+      const mins = Math.floor(totalSeconds / 60);
+      const secs = totalSeconds % 60;
+      if (mins === 0) return `${secs} sec`;
+      if (mins < 5 && secs >= 15) return `${mins} min ${secs} sec`;
+      return `${Math.max(1, Math.round(distanceMeters / 80))} min`;
+    }
+
+    function selectCandidateWaypoints(startLat, startLng, destLat, destLng) {
+      const directDist = computeHaversineMeters(startLat, startLng, destLat, destLng);
+      if (directDist < 90) return [];
+
+      const candidates = [];
+      CAMPUS_ROUTING_HUBS.forEach(hubInfo => {
+        const hubLoc = VERIFIED_CAMPUS_LOCATIONS.find(l => l.id === hubInfo.id);
+        if (!hubLoc) return;
+
+        const dStart = computeHaversineMeters(startLat, startLng, hubLoc.lat, hubLoc.lng);
+        const dEnd = computeHaversineMeters(hubLoc.lat, hubLoc.lng, destLat, destLng);
+
+        if (dStart < 60 || dEnd < 60) return;
+
+        const detourRatio = (dStart + dEnd) / directDist;
+        if (detourRatio <= 1.95) {
+          candidates.push({
+            hub: hubLoc,
+            label: `Via ${hubInfo.name}`,
+            detourRatio
+          });
+        }
+      });
+
+      candidates.sort((a, b) => a.detourRatio - b.detourRatio);
+      return candidates.slice(0, 3);
+    }
+
+    async function calculateAndDisplayRoute() {
+      if (!selectedDestination) {
+        selectDestinationById('block-25', true);
+        return;
+      }
+      if (selectedDestination.missingCoordinates) return;
+
+      const loadingToast = document.getElementById('loadingToast');
+      loadingToast.classList.remove('hidden');
+
+      clearMapRouteLayers();
+
+      destMarker = L.marker([selectedDestination.lat, selectedDestination.lng], {
+        icon: createCustomMarkerIcon('destination', selectedDestination.name),
+        zIndexOffset: 1000
+      }).addTo(map);
+
+      const startLat = startPoint.lat;
+      const startLng = startPoint.lng;
+      const destLat = selectedDestination.lat;
+      const destLng = selectedDestination.lng;
+
+      const collectedRoutes = [];
+
+      try {
+        const primaryUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true&alternatives=3`;
+        const candidateHubs = selectCandidateWaypoints(startLat, startLng, destLat, destLng);
+
+        const requests = [
+          fetch(primaryUrl).then(r => r.ok ? r.json() : null).catch(() => null),
+          ...candidateHubs.map(c => {
+            const viaUrl = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${startLng},${startLat};${c.hub.lng},${c.hub.lat};${destLng},${destLat}?overview=full&geometries=geojson&steps=true`;
+            return fetch(viaUrl)
+              .then(r => r.ok ? r.json() : null)
+              .then(data => ({ data, viaLabel: c.label }))
+              .catch(() => null);
+          })
+        ];
+
+        const results = await Promise.all(requests);
+        const primaryData = results[0];
+
+        if (primaryData && primaryData.routes && primaryData.routes.length > 0) {
+          primaryData.routes.forEach((r, idx) => {
+            const coordsLatLng = r.geometry.coordinates.map(c => [c[1], c[0]]);
+            const allSteps = (r.legs || []).flatMap(l => l.steps || []);
+            collectedRoutes.push({
+              name: idx === 0 ? 'Direct Campus Spine' : `Campus Walkway ${idx + 1}`,
+              distanceMeters: Math.round(r.distance),
+              durationSeconds: Math.max(15, Math.round(r.distance / 1.35)),
+              coordsLatLng,
+              steps: allSteps,
+              isVerifiedRoute: true
+            });
+          });
+        }
+
+        // Add hub-based alternative routes
+        results.slice(1).forEach(res => {
+          if (res && res.data && res.data.routes && res.data.routes.length > 0) {
+            const r = res.data.routes[0];
+            const dist = Math.round(r.distance);
+            const isDuplicate = collectedRoutes.some(existing => Math.abs(existing.distanceMeters - dist) < 15);
+            if (!isDuplicate) {
+              const coordsLatLng = r.geometry.coordinates.map(c => [c[1], c[0]]);
+              const allSteps = (r.legs || []).flatMap(l => l.steps || []);
+              collectedRoutes.push({
+                name: res.viaLabel,
+                distanceMeters: dist,
+                durationSeconds: Math.max(15, Math.round(dist / 1.35)),
+                coordsLatLng,
+                steps: allSteps,
+                isVerifiedRoute: true
+              });
+            }
+          }
+        });
+
+        if (collectedRoutes.length === 0) {
+          throw new Error('No live OSRM routes returned');
+        }
+
+      } catch (err) {
+        // Fallback: Generate multiple campus paths using verified campus hubs
+        const straightMeters = computeHaversineMeters(startLat, startLng, destLat, destLng);
+        const primaryDist = Math.round(straightMeters * 1.24);
+
+        collectedRoutes.push({
+          name: 'Direct Main Walkway',
+          distanceMeters: primaryDist,
+          durationSeconds: Math.max(15, Math.round(primaryDist / 1.35)),
+          coordsLatLng: [[startLat, startLng], [destLat, destLng]],
+          steps: [],
+          isVerifiedRoute: false
+        });
+
+        const candidateHubs = selectCandidateWaypoints(startLat, startLng, destLat, destLng);
+        candidateHubs.forEach(c => {
+          const leg1 = computeHaversineMeters(startLat, startLng, c.hub.lat, c.hub.lng);
+          const leg2 = computeHaversineMeters(c.hub.lat, c.hub.lng, destLat, destLng);
+          const viaDist = Math.round((leg1 + leg2) * 1.22);
+          if (Math.abs(viaDist - primaryDist) >= 12) {
+            collectedRoutes.push({
+              name: c.label,
+              distanceMeters: viaDist,
+              durationSeconds: Math.max(15, Math.round(viaDist / 1.35)),
+              coordsLatLng: [[startLat, startLng], [c.hub.lat, c.hub.lng], [destLat, destLng]],
+              steps: [],
+              isVerifiedRoute: false
+            });
+          }
+        });
+      } finally {
+        loadingToast.classList.add('hidden');
+      }
+
+      // Sort all discovered routes by shortest distance / fastest timing
+      collectedRoutes.sort((a, b) => a.distanceMeters - b.distanceMeters);
+
+      // Assign each route its own distinct color from ROUTE_PALETTE
+      availableRoutes = collectedRoutes.slice(0, 4).map((route, idx) => ({
+        ...route,
+        index: idx,
+        isShortest: idx === 0,
+        palette: ROUTE_PALETTE[idx % ROUTE_PALETTE.length],
+        formattedTime: formatWalkingTime(route.distanceMeters),
+        walkingMinutes: Math.max(1, Math.round(route.distanceMeters / 80))
+      }));
+
+      selectedRouteIndex = 0; // Default focus on the shortest route
+      renderAllRoutesOnMap(true);
+      updateMultiRouteUI();
+    }
+
+    function renderAllRoutesOnMap(fitBoundsToAll = false) {
+      routePolylines.forEach(p => map.removeLayer(p));
+      routePolylines = [];
+
+      const boundsGroup = L.featureGroup();
+
+      // Draw all routes simultaneously in their distinct solid colors
+      availableRoutes.forEach((route, idx) => {
+        const isFocused = idx === selectedRouteIndex;
+        const colorHex = route.palette.hex;
+
+        // Subtle dark casing underneath each colored line so overlapping segments stay crisp and distinct
+        const casingPoly = L.polyline(route.coordsLatLng, {
+          color: '#090D16',
+          weight: isFocused ? 11 : 8,
+          opacity: 0.85,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map);
+        routePolylines.push(casingPoly);
+
+        const poly = L.polyline(route.coordsLatLng, {
+          color: colorHex,
+          weight: isFocused ? 7 : 5,
+          opacity: isFocused ? 1.0 : 0.88,
+          dashArray: route.isVerifiedRoute ? null : '10, 10',
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map);
+
+        // Place a permanent badge at a staggered position along each route so all labels are readable at once
+        const midCoordIdx = Math.min(
+          route.coordsLatLng.length - 1,
+          Math.max(0, Math.floor((route.coordsLatLng.length * (idx + 1)) / (availableRoutes.length + 1)))
+        );
+        const badgeLatLng = route.coordsLatLng[midCoordIdx];
+
+        if (badgeLatLng) {
+          const labelMarker = L.marker(badgeLatLng, {
+            icon: L.divIcon({
+              className: '',
+              html: `
+                <div onclick="selectRouteOption(${idx})" style="border-color:${colorHex};" class="cursor-pointer whitespace-nowrap px-2 py-0.5 rounded-full bg-slate-950/95 border-2 text-[10px] font-display font-bold text-white shadow-lg flex items-center gap-1 -translate-x-1/2 -translate-y-1/2 hover:scale-105 transition">
+                  <span style="background:${colorHex};" class="w-2 h-2 rounded-full inline-block"></span>
+                  <span>R${idx + 1}: ${route.formattedTime}</span>
+                  ${route.isShortest ? '<span class="text-[#A3E635]">★</span>' : ''}
+                </div>
+              `,
+              iconSize: [80, 22]
+            }),
+            zIndexOffset: isFocused ? 850 : 700 + idx
+          }).addTo(map);
+          routePolylines.push(labelMarker);
+        }
+
+        poly.bindTooltip(
+          `Route ${idx + 1} (${route.palette.name}): ${route.name} • ${route.formattedTime} (${route.distanceMeters} m)`,
+          { sticky: true }
+        );
+
+        poly.on('click', () => {
+          selectRouteOption(idx);
+        });
+
+        if (isFocused) {
+          poly.bringToFront();
+        }
+
+        routePolylines.push(poly);
+        boundsGroup.addLayer(poly);
+      });
+
+      if (fitBoundsToAll && boundsGroup.getLayers().length > 0) {
+        map.fitBounds(boundsGroup.getBounds(), { padding: [55, 55] });
+      }
+    }
+
+    window.selectRouteOption = function(idx) {
+      if (idx < 0 || idx >= availableRoutes.length) return;
+      selectedRouteIndex = idx;
+      renderAllRoutesOnMap(false);
+      updateMultiRouteUI();
+    };
+
+    function updateMultiRouteUI() {
+      // Update Mobile Peek Bar Summary
+      const mobilePeekText = document.getElementById('mobilePeekText');
+      const peekDot = document.getElementById('peekDot');
+      if (availableRoutes.length > 0 && selectedDestination) {
+        const fastest = availableRoutes[0];
+        const distStr = fastest.distanceMeters >= 1000 ? `${(fastest.distanceMeters/1000).toFixed(2)} km` : `${fastest.distanceMeters} m`;
+        if (mobilePeekText) {
+          mobilePeekText.innerHTML = `<span class="text-lime font-bold">⚡ ${fastest.formattedTime}</span> to <strong class="text-white">${selectedDestination.name}</strong> (${distStr})`;
+        }
+        if (peekDot) peekDot.className = 'w-2.5 h-2.5 rounded-full bg-lime animate-pulse shrink-0';
+        if (window.innerWidth < 1024 && sheetState === 'peek') {
+          setMobileSheetState('half');
+        }
+      }
+      const card = document.getElementById('routeResultCard');
+      card.classList.remove('hidden');
+
+      const shortestRoute = availableRoutes[0];
+      const activeRoute = availableRoutes[selectedRouteIndex];
+      if (!activeRoute || !shortestRoute) return;
+
+      document.getElementById('routeDestName').textContent = selectedDestination.name;
+      document.getElementById('routeDestSub').textContent = `${selectedDestination.category} • ${selectedDestination.description || ''}`;
+      document.getElementById('routeOriginName').textContent = startPoint.name;
+      document.getElementById('routeCountBadge').textContent = `${availableRoutes.length} Routes Together`;
+
+      // Shortest Route Banner
+      const shortestDistText = shortestRoute.distanceMeters >= 1000
+        ? `${(shortestRoute.distanceMeters / 1000).toFixed(2)} km`
+        : `${shortestRoute.distanceMeters} m`;
+      document.getElementById('shortestRouteLabel').textContent = `Route 1 (${shortestRoute.palette.name}): ${shortestRoute.name} (${shortestDistText})`;
+      document.getElementById('shortestRouteTiming').textContent = shortestRoute.formattedTime;
+
+      // Active Route Metrics
+      const activeDistText = activeRoute.distanceMeters >= 1000
+        ? `${(activeRoute.distanceMeters / 1000).toFixed(2)} km`
+        : `${activeRoute.distanceMeters} m`;
+      document.getElementById('activeTimeLabel').textContent = `Route ${selectedRouteIndex + 1} (${activeRoute.palette.name}) Time`;
+      const timeValEl = document.getElementById('routeTimeValue');
+      timeValEl.textContent = activeRoute.formattedTime;
+      timeValEl.style.color = activeRoute.palette.hex;
+      document.getElementById('routeDistValue').textContent = activeDistText;
+
+      // Populate All Available Routes Comparison Cards (Each styled with its distinct color)
+      const routesListEl = document.getElementById('allRoutesList');
+      routesListEl.innerHTML = '';
+
+      availableRoutes.forEach((route, idx) => {
+        const isSelected = idx === selectedRouteIndex;
+        const distLabel = route.distanceMeters >= 1000
+          ? `${(route.distanceMeters / 1000).toFixed(2)} km`
+          : `${route.distanceMeters} m`;
+
+        const extraMeters = route.distanceMeters - shortestRoute.distanceMeters;
+        const extraSeconds = route.durationSeconds - shortestRoute.durationSeconds;
+        const extraMins = Math.max(1, Math.round(extraSeconds / 60));
+
+        let comparisonBadge = '';
+        if (route.isShortest) {
+          comparisonBadge = `<span class="px-2 py-0.5 rounded bg-lime text-slate-950 font-bold text-[10px] uppercase tracking-wider">⚡ Shortest & Fastest</span>`;
+        } else {
+          comparisonBadge = `<span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/10 font-medium text-[10px]">+${extraMins} min (+${extraMeters} m)</span>`;
+        }
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.onclick = () => selectRouteOption(idx);
+        btn.style.borderColor = isSelected ? route.palette.hex : 'rgba(255,255,255,0.12)';
+        btn.className = isSelected
+          ? 'w-full text-left p-2.5 rounded-xl bg-slate-900 border-2 transition flex items-center justify-between gap-2 shadow-lg'
+          : 'w-full text-left p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800/90 border transition flex items-center justify-between gap-2';
+
+        btn.innerHTML = `
+          <div class="min-w-0 space-y-1">
+            <div class="flex items-center gap-2">
+              <span style="background:${route.palette.hex};" class="w-3.5 h-3.5 rounded-full shrink-0 border border-white/40 shadow"></span>
+              <span class="text-xs font-bold text-white truncate">Route ${idx + 1}: ${route.name}</span>
+            </div>
+            <div class="pl-5 flex items-center gap-2 flex-wrap">
+              ${comparisonBadge}
+              <span style="color:${route.palette.hex};" class="text-[10px] font-semibold">${route.palette.name}</span>
+            </div>
+          </div>
+          <div class="text-right shrink-0">
+            <div style="color:${route.palette.hex};" class="font-display font-bold text-sm">${route.formattedTime}</div>
+            <div class="text-[11px] text-slate-400 font-mono">${distLabel}</div>
+          </div>
+        `;
+        routesListEl.appendChild(btn);
+      });
+
+      // Render Turn-by-Turn Steps for the focused route
+      const stepsContainer = document.getElementById('routeStepsContainer');
+      stepsContainer.innerHTML = '';
+
+      if (activeRoute.isVerifiedRoute && activeRoute.steps && activeRoute.steps.length > 0) {
+        activeRoute.steps.forEach((step, idx) => {
+          const stepDist = Math.round(step.distance);
+          if (stepDist === 0 && idx < activeRoute.steps.length - 1) return;
+          const instruction = formatStepInstruction(step, idx, activeRoute.steps.length);
+          const div = document.createElement('div');
+          div.className = 'flex items-start justify-between gap-2 py-1.5 border-b border-white/5 last:border-none';
+          div.innerHTML = `
+            <div class="flex items-start gap-2">
+              <span style="color:${activeRoute.palette.hex};" class="w-4 h-4 rounded-full bg-slate-800 text-[10px] font-bold flex items-center justify-center shrink-0 mt-0.5">${idx + 1}</span>
+              <span class="text-slate-200">${instruction}</span>
+            </div>
+            <span class="text-slate-400 font-mono shrink-0">${stepDist} m</span>
+          `;
+          stepsContainer.appendChild(div);
+        });
+      } else {
+        const bearingDir = getCardinalDirection(startPoint.lat, startPoint.lng, selectedDestination.lat, selectedDestination.lng);
+        stepsContainer.innerHTML = `
+          <div class="p-2.5 rounded-lg bg-slate-900 border border-white/10 text-slate-200 space-y-1">
+            <p class="font-semibold" style="color:${activeRoute.palette.hex};">Route ${selectedRouteIndex + 1} (${activeRoute.name}) Guide:</p>
+            <p>1. Start at <strong>${startPoint.name}</strong>.</p>
+            <p>2. Follow the <strong>${activeRoute.name}</strong> heading <strong>${bearingDir}</strong> toward <strong>${selectedDestination.name}</strong>.</p>
+            <p>3. Total distance: ~${activeDistText} (${activeRoute.formattedTime}).</p>
+          </div>
+        `;
+      }
+    }
+
+    function formatStepInstruction(step, idx, total) {
+      if (idx === total - 1) return `Arrive at ${selectedDestination.name}`;
+      const type = step.maneuver?.type || 'continue';
+      const modifier = step.maneuver?.modifier || '';
+      const roadName = step.name ? ` onto ${step.name}` : ' along campus walkway';
+
+      if (type === 'depart') return `Head ${modifier || 'forward'}${roadName}`;
+      if (type === 'turn') return `Turn ${modifier}${roadName}`;
+      return `Continue ${modifier}${roadName}`;
+    }
+
+    function clearMapRouteLayers() {
+      if (destMarker) {
+        map.removeLayer(destMarker);
+        destMarker = null;
+      }
+      routePolylines.forEach(p => map.removeLayer(p));
+      routePolylines = [];
+      availableRoutes = [];
+    }
+
+    function clearCompleteRoute() {
+      const mobilePeekText = document.getElementById('mobilePeekText');
+      const peekDot = document.getElementById('peekDot');
+      if (mobilePeekText) mobilePeekText.textContent = 'Tap to search & view campus routes';
+      if (peekDot) peekDot.className = 'w-2.5 h-2.5 rounded-full bg-lime shrink-0';
+      clearMapRouteLayers();
+      selectedDestination = null;
+      document.getElementById('destSearchInput').value = '';
+      document.getElementById('clearSearchBtn').classList.add('hidden');
+      document.getElementById('routeResultCard').classList.add('hidden');
+      document.getElementById('missingDataCard').classList.add('hidden');
+      map.flyTo([31.2535, 75.7042], 16);
+    }
+
+    /*************************************************************************
+     * 8. GEOMETRY HELPERS
+     *************************************************************************/
+    function computeHaversineMeters(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = d => (d * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function getCardinalDirection(lat1, lng1, lat2, lng2) {
+      const dLat = lat2 - lat1;
+      const dLng = lng2 - lng1;
+      const angle = (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
+      const dirs = ['North', 'North-East', 'East', 'South-East', 'South', 'South-West', 'West', 'North-West'];
+      return dirs[Math.round(angle / 45) % 8];
+    }
+
+    /*************************************************************************
+     * 9. UI EVENT LISTENERS & IVIEWD 3D VIEW CONTROLS
+     *************************************************************************/
+    document.addEventListener('DOMContentLoaded', () => {
+      initMap();
+      populateStartSelector();
+      renderDirectoryList();
+      setupSearchAutocomplete();
+
+      const welcomeOverlay = document.getElementById('welcomeOverlay');
+      document.getElementById('welcomeUseGpsBtn').addEventListener('click', () => {
+        welcomeOverlay.classList.add('hidden');
+        requestUserGeolocation();
+      });
+      document.getElementById('welcomeStartMainGateBtn').addEventListener('click', () => {
+        welcomeOverlay.classList.add('hidden');
+        // Automatically demonstrate multi-color routes from Main Gate to Block 25 on start
+        selectDestinationById('block-25', true);
+      });
+
+      document.getElementById('useLocationBtn').addEventListener('click', requestUserGeolocation);
+      document.getElementById('simulateGpsBtn').addEventListener('click', simulateOnCampusGps);
+
+      document.getElementById('showRouteBtn').addEventListener('click', calculateAndDisplayRoute);
+      document.getElementById('clearRouteBtn').addEventListener('click', clearCompleteRoute);
+      document.getElementById('fitAllRoutesBtn').addEventListener('click', () => renderAllRoutesOnMap(true));
+      document.getElementById('changeDestBtn').addEventListener('click', () => {
+        document.getElementById('destSearchInput').focus();
+        document.getElementById('destSearchInput').select();
+      });
+
+      document.getElementById('toggleStepsBtn').addEventListener('click', () => {
+        const container = document.getElementById('routeStepsContainer');
+        const label = document.getElementById('toggleStepsText');
+        const isHidden = container.classList.toggle('hidden');
+        label.textContent = isHidden ? 'Show Directions' : 'Hide Directions';
+      });
+
+      // iViewd 3D Campus View Split / Fullscreen Switcher
+      const iviewdPane = document.getElementById('iviewdPane');
+      const mapPane = document.getElementById('mapPane');
+      const iviewdBtnLabel = document.getElementById('iviewdBtnLabel');
+      const expandIviewdFullBtn = document.getElementById('expandIviewdFullBtn');
+      let iviewdFullMode = false;
+
+      function refreshMapSize() {
+        setTimeout(() => map.invalidateSize(), 320);
+      }
+
+      const iviewdMobileBtnLabel = document.getElementById('iviewdMobileBtnLabel');
+      document.getElementById('toggleIviewdBtn').addEventListener('click', () => {
+        const isHidden = iviewdPane.classList.toggle('hidden');
+        if (isHidden) {
+          mapPane.classList.remove('hidden');
+          iviewdFullMode = false;
+          iviewdBtnLabel.textContent = 'Split / 3D Campus View (iViewd)';
+          if (iviewdMobileBtnLabel) iviewdMobileBtnLabel.textContent = '3D';
+        } else {
+          iviewdBtnLabel.textContent = 'Hide 3D View';
+          if (iviewdMobileBtnLabel) iviewdMobileBtnLabel.textContent = 'Map';
+        }
+        refreshMapSize();
+      });
+
+      document.getElementById('closeIviewdPaneBtn').addEventListener('click', () => {
+        iviewdPane.classList.add('hidden');
+        mapPane.classList.remove('hidden');
+        iviewdFullMode = false;
+        iviewdBtnLabel.textContent = 'Split / 3D Campus View (iViewd)';
+        refreshMapSize();
+      });
+
+      expandIviewdFullBtn.addEventListener('click', () => {
+        iviewdFullMode = !iviewdFullMode;
+        if (iviewdFullMode) {
+          mapPane.classList.add('hidden');
+          iviewdPane.classList.remove('xl:w-1/2', 'h-1/2');
+          iviewdPane.classList.add('w-full', 'h-full');
+          expandIviewdFullBtn.textContent = 'Back to Split Map + 3D';
+        } else {
+          mapPane.classList.remove('hidden');
+          iviewdPane.classList.add('xl:w-1/2', 'h-1/2');
+          expandIviewdFullBtn.textContent = 'Full Width 3D';
+          refreshMapSize();
+        }
+      });
+
+      // Category Filter Pills
+      document.querySelectorAll('.cat-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          activeCategory = btn.getAttribute('data-cat');
+          document.querySelectorAll('.cat-pill').forEach(b => {
+            b.className = 'cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-slate-800/90 text-slate-300 hover:bg-slate-700 border border-white/10 transition';
+          });
+          btn.className = 'cat-pill shrink-0 text-xs font-medium px-2.5 py-1 rounded-full bg-lime text-slate-950 font-semibold transition';
+          renderCampusMarkers();
+          renderDirectoryList();
+        });
+      });
+
+      // Map Layer Toggle
+      document.getElementById('toggleLayerBtn').addEventListener('click', () => {
+        const label = document.getElementById('layerLabel');
+        if (currentLayerMode === 'satellite') {
+          map.removeLayer(satelliteTileLayer);
+          darkStreetTileLayer.addTo(map);
+          currentLayerMode = 'dark-osm';
+          label.textContent = 'Dark Map View';
+        } else {
+          map.removeLayer(darkStreetTileLayer);
+          satelliteTileLayer.addTo(map);
+          currentLayerMode = 'satellite';
+          label.textContent = 'Satellite View';
+        }
+      });
+
+      document.getElementById('zoomInBtn').addEventListener('click', () => map.zoomIn());
+      document.getElementById('zoomOutBtn').addEventListener('click', () => map.zoomOut());
+      document.getElementById('recenterBtn').addEventListener('click', () => {
+        map.flyTo([31.2535, 75.7042], 16);
+      });
+
+      // Mobile Bottom Sheet Snap Management ('peek' | 'half' | 'full')
+      const navPanel = document.getElementById('navPanel');
+      let sheetState = 'half'; // Default initial state on mobile
+
+      window.setMobileSheetState = function(state) {
+        if (window.innerWidth >= 1024) return;
+        sheetState = state;
+        navPanel.classList.remove('sheet-peek', 'sheet-half', 'sheet-full');
+        navPanel.classList.add(`sheet-${state}`);
+
+        const hint = document.getElementById('mobileSheetHint');
+        const icon = document.getElementById('sheetToggleIcon');
+        if (state === 'peek') {
+          if (hint) hint.textContent = 'Expand ⌃';
+          if (icon) icon.style.transform = 'rotate(0deg)';
+        } else if (state === 'half') {
+          if (hint) hint.textContent = 'More ⌃';
+          if (icon) icon.style.transform = 'rotate(180deg)';
+        } else if (state === 'full') {
+          if (hint) hint.textContent = 'Collapse ⌄';
+          if (icon) icon.style.transform = 'rotate(180deg)';
+        }
+        setTimeout(() => map && map.invalidateSize(), 320);
+      };
+
+      function cycleMobileSheet() {
+        if (sheetState === 'peek') setMobileSheetState('half');
+        else if (sheetState === 'half') setMobileSheetState('full');
+        else setMobileSheetState('peek');
+      }
+
+      document.getElementById('mobileSheetToggle').addEventListener('click', cycleMobileSheet);
+
+      // Mobile swipe gesture support for sheet handle
+      let touchStartY = 0;
+      const mobileHandle = document.getElementById('mobileSheetToggle');
+      if (mobileHandle) {
+        mobileHandle.addEventListener('touchstart', (e) => {
+          if (e.touches && e.touches[0]) {
+            touchStartY = e.touches[0].clientY;
+          }
+        }, { passive: true });
+
+        mobileHandle.addEventListener('touchend', (e) => {
+          if (e.changedTouches && e.changedTouches[0]) {
+            const touchEndY = e.changedTouches[0].clientY;
+            const diff = touchStartY - touchEndY;
+            if (Math.abs(diff) > 28) {
+              if (diff > 0) {
+                // Swiped UP
+                if (sheetState === 'peek') setMobileSheetState('half');
+                else if (sheetState === 'half') setMobileSheetState('full');
+              } else {
+                // Swiped DOWN
+                if (sheetState === 'full') setMobileSheetState('half');
+                else if (sheetState === 'half') setMobileSheetState('peek');
+              }
+            }
+          }
+        }, { passive: true });
+      }
+
+
+      // Tapping on the map collapses the sheet to peek so the user can easily view the map
+      map.on('click', () => {
+        if (window.innerWidth < 1024 && sheetState !== 'peek') {
+          setMobileSheetState('peek');
+        }
+      });
+
+      // Destination focus opens sheet enough for keyboard & suggestions
+      document.getElementById('destSearchInput').addEventListener('focus', () => {
+        if (window.innerWidth < 1024 && sheetState === 'peek') {
+          setMobileSheetState('half');
+        }
+      });
+
+      // Mobile Route Legend Toggle
+      const mobileLegendToggleBtn = document.getElementById('mobileLegendToggleBtn');
+      const mobileLegendDropdown = document.getElementById('mobileLegendDropdown');
+      const closeMobileLegendBtn = document.getElementById('closeMobileLegendBtn');
+      const mobileLegendChevron = document.getElementById('mobileLegendChevron');
+
+      if (mobileLegendToggleBtn) {
+        mobileLegendToggleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const isHidden = mobileLegendDropdown.classList.toggle('hidden');
+          if (mobileLegendChevron) {
+            mobileLegendChevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+          }
+        });
+      }
+      if (closeMobileLegendBtn) {
+        closeMobileLegendBtn.addEventListener('click', () => {
+          mobileLegendDropdown.classList.add('hidden');
+          if (mobileLegendChevron) mobileLegendChevron.style.transform = 'rotate(0deg)';
+        });
+      }
+      document.addEventListener('click', (e) => {
+        if (mobileLegendDropdown && !mobileLegendDropdown.contains(e.target) && !mobileLegendToggleBtn.contains(e.target)) {
+          mobileLegendDropdown.classList.add('hidden');
+          if (mobileLegendChevron) mobileLegendChevron.style.transform = 'rotate(0deg)';
+        }
+      });
+
+      // Quick GPS Map Button
+      const mapGpsBtn = document.getElementById('mapGpsBtn');
+      if (mapGpsBtn) {
+        mapGpsBtn.addEventListener('click', requestUserGeolocation);
+      }
+
+      // Responsive window resize
+      window.addEventListener('resize', () => {
+        setTimeout(() => map && map.invalidateSize(), 300);
+      });
+
+      const sitePlanModal = document.getElementById('sitePlanModal');
+      document.getElementById('openSitePlanBtn').addEventListener('click', () => sitePlanModal.classList.remove('hidden'));
+      document.getElementById('closeSitePlanBtn').addEventListener('click', () => sitePlanModal.classList.add('hidden'));
+    });
+  </script>
+</body>
+</html>
